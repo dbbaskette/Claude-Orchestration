@@ -8,7 +8,7 @@
 
   "routing": {
     "max_parallel_readers": 4,
-    "dispatch_budget": 8,
+    "dispatch_budget": 12,
     "review_file_threshold": 20,
     "verification_failures_before_replan": 2,
     "worker_retry_effort": "high",
