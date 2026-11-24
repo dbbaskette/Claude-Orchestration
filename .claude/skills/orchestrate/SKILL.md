@@ -4,7 +4,9 @@ description: Planner/executor orchestration across model tiers. A top-tier plann
 argument-hint: "[task description]"
 model: fable
 effort: high
-allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/sync_models.py *)
+allowed-tools:
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/sync_models.py *)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/stats.py *)
 ---
 
 # Orchestrator mode
@@ -30,13 +32,14 @@ Run once:
 python3 ${CLAUDE_SKILL_DIR}/scripts/sync_models.py --check
 ```
 
-It prints each tier's model and effort and the `routing` limits named below.
+It prints each tier's model and effort, the `routing` limits named below, and whether stats are on.
 
 - `CONFIG ERROR`, or it won't run: stop and show the user.
 - `DRIFT`: tell the user to run the sync command it prints. Continue only if every tier's model is an alias, since your per-call `model` then overrides the stale files.
 
 ## 1. Triage
 
+- **Task is just `stats`:** run `python3 ${CLAUDE_SKILL_DIR}/scripts/stats.py`, relay the summary, and stop.
 - **Question, review or explanation:** answer it yourself; workers do any bulk reading.
 - **Small job** (one file or one tightly coupled change, steps already clear): send one brief to the right tier, with no ledger or REPORT FILE, then verify. A few-line edit to a file you have already read: do it yourself.
 - **Otherwise:** plan.
@@ -70,11 +73,11 @@ Keep the plan in `ledger.md` there, and mirror the steps in the task list:
 
 ```
 TASK | PLAN (steps: tier, status) | RE-PLAN TRIGGERS | DECISIONS
-STEP LOG (step, tier, model, BASE, status, report path)
-OPEN FINDINGS (with why each is parked) | DISPATCHES n/budget
+STEP LOG, one line per dispatch (step, kind, tier, model, effort, BASE, status, tokens, seconds, report path)
+OPEN FINDINGS (with why each is parked) | STRAINED | DISPATCHES n/budget, estimate e
 ```
 
-Update it as you go. Re-read it when results arrive and after compaction (the newest run folder is the current one), and trust it and `git` over memory. Never pull a subagent's transcript into your context to check progress.
+Take tokens and seconds from the Agent result's usage, and leave them blank if it shows none. Under STRAINED, note as it happens where the protocol got in the way or cost more than it should, and any rule you bent. Update the ledger as you go. Re-read it when results arrive and after compaction (the newest run folder is the current one), and trust it and `git` over memory. Never pull a subagent's transcript into your context to check progress.
 
 ## 3. Dispatch
 
@@ -135,4 +138,5 @@ Causes: **missing context**, same tier with a better brief. **Needs more reasoni
 
 1. A worker runs the full verification (tests, build, lint); read the output.
 2. Review the whole diff from the first BASE yourself for coherence and scope creep.
-3. Tell the user what changed, which tier and model did each step (`/tasks` shows the models actually used), what was verified and how, the open findings, and anything undone or unverified.
+3. If stats are on, record the run, also when it stops early. Print the form with `python3 ${CLAUDE_SKILL_DIR}/scripts/stats.py --template`, fill it from the ledger, write it to `<run folder>/stats.json`, then run `stats.py --check` on that file and fix what it reports.
+4. Tell the user what changed, which tier and model did each step (`/tasks` shows the models actually used), what was verified and how, the open findings, where the protocol strained, and anything undone or unverified.
