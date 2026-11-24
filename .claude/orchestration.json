@@ -1,17 +1,17 @@
 {
   "_readme": "Models and effort per tier. After editing, run: python3 .claude/skills/orchestrate/scripts/sync_models.py. model: an alias (fable, opus, sonnet, haiku = latest of that family) or a full ID such as claude-opus-5-5 to pin a version. effort: low | medium | high | xhigh | max.",
 
-  "planner":  { "model": "fable", "effort": "medium" },
-  "executor": { "agent": "orch-executor", "model": "opus", "effort": "medium" },
+  "planner":  { "model": "fable", "effort": "high" },
+  "executor": { "agent": "orch-executor", "model": "opus", "effort": "high" },
   "reviewer": { "agent": "orch-reviewer", "model": "opus", "effort": "medium" },
-  "worker":   { "agent": "orch-worker", "model": "sonnet", "effort": "low" },
+  "worker":   { "agent": "orch-worker", "model": "sonnet", "effort": "medium" },
 
   "routing": {
     "max_parallel_readers": 4,
     "dispatch_budget": 8,
     "review_file_threshold": 20,
     "verification_failures_before_replan": 2,
-    "worker_retry_effort": "medium",
-    "executor_retry_effort": "high"
+    "worker_retry_effort": "high",
+    "executor_retry_effort": "xhigh"
   }
 }

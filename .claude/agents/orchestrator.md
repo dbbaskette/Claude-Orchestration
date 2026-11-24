@@ -2,7 +2,7 @@
 name: orchestrator
 description: Main-session planner for whole-session orchestrator mode, started with `claude --agent orchestrator`. Never dispatch this as a subagent.
 model: fable
-effort: medium
+effort: high
 skills:
   - orchestrate
 color: purple

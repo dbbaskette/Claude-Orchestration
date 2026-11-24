@@ -4,10 +4,10 @@ Orchestrator mode for Claude Code. A top-tier planner plans and verifies, and ch
 
 | Tier | Default | Does | Runs as |
 |---|---|---|---|
-| Planner | `fable`, medium | Plans, routes, verifies, re-plans | Main thread |
-| Executor | `opus`, medium | All real coding | `orch-executor` |
+| Planner | `fable`, high | Plans, routes, verifies, re-plans | Main thread |
+| Executor | `opus`, high | All real coding | `orch-executor` |
 | Reviewer | `opus`, medium | Independent read-only review of risky changes | `orch-reviewer` |
-| Worker | `sonnet`, low | Searches, test runs, mechanical edits. Never real coding | `orch-worker` |
+| Worker | `sonnet`, medium | Searches, test runs, mechanical edits. Never real coding | `orch-worker` |
 
 ## Use
 
@@ -41,7 +41,7 @@ Add `--check` to report drift without writing; `/orchestrate` runs that check it
 | `dispatch_budget` | 8 | Dispatches per task before the planner must merge steps or ask |
 | `review_file_threshold` | 20 | Changes touching more files than this always get reviewed |
 | `verification_failures_before_replan` | 2 | Failed checks on one step before re-planning |
-| `worker_retry_effort`, `executor_retry_effort` | medium, high | Effort for a retried step |
+| `worker_retry_effort`, `executor_retry_effort` | high, xhigh | Effort for a retried step |
 
 ## Install globally
 
