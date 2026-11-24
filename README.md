@@ -75,3 +75,7 @@ Without git history there is no diff to check, so the planner verifies by readin
 ## Sources
 
 [Antigravity Orchestrator](https://antigravity.google/docs/models#orchestrator) · [Which Claude model should you build with](https://claude.dev/blog/which-claude-model-should-you-build-with/) · [superpowers subagent-driven-development](https://github.com/obra/superpowers/tree/main/skills/subagent-driven-development) · [Quesma multi-model benchmark](https://quesma.com/blog/multi-model-claude-code-refusal-terminal-bench/) · [Fable orchestrator, Opus executor](https://flaviocopes.com/fable-orchestrator/) · [The Orchestrator's Tax](https://martinfowler.com/articles/orchestrator-tax.html)
+
+## License
+
+[MIT](LICENSE)
