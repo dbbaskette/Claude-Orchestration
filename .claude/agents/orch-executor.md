@@ -2,7 +2,7 @@
 name: orch-executor
 description: Executor tier for /orchestrate. Does all real coding (new logic, bug fixes, debugging, refactors, multi-file changes) from a self-contained brief sent by the orchestrator.
 model: opus
-effort: medium
+effort: high
 disallowedTools: Agent
 color: blue
 ---

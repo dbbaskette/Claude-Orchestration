@@ -2,7 +2,7 @@
 name: orch-worker
 description: Worker tier for /orchestrate. Basic work only (find files, read and summarize code or logs, run tests/builds and report, fully specified mechanical edits) from a self-contained brief sent by the orchestrator. Never real coding.
 model: sonnet
-effort: low
+effort: medium
 disallowedTools: Agent
 color: green
 ---

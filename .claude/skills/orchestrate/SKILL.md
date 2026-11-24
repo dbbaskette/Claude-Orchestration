@@ -3,7 +3,7 @@ name: orchestrate
 description: Planner/executor orchestration across model tiers. A top-tier planner plans and verifies, a strong executor does all real coding, an independent reviewer checks risky changes, and a cheaper worker does basic work (searches, test runs, mechanical edits). Use when the user types /orchestrate, asks for "orchestrator mode", or hands over a multi-step coding task to split across models.
 argument-hint: "[task description]"
 model: fable
-effort: medium
+effort: high
 allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/sync_models.py *)
 ---
 
