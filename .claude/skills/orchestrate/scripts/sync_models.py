@@ -46,6 +46,9 @@ def validate(cfg):
     for key in ROUTING_EFFORTS:
         if routing.get(key) not in EFFORTS:
             errors.append(f"routing.{key} must be one of {sorted(EFFORTS)}")
+    stats = cfg.get("stats", {})
+    if not isinstance(stats, dict) or type(stats.get("enabled", False)) is not bool:
+        errors.append("stats.enabled must be true or false")
     return errors
 
 
@@ -89,6 +92,7 @@ def main():
             print(f"  {tier:9} model={t['model']:8} effort={t['effort']:7} agent={t.get('agent', '(main thread)')}")
         routing = {k: v for k, v in cfg.get("routing", {}).items() if not k.startswith("_")}
         print("  routing:", json.dumps(routing))
+        print("  stats:", "on" if cfg.get("stats", {}).get("enabled") else "off")
 
     problems, drift = [], []
     for tier, path in targets(cfg):
