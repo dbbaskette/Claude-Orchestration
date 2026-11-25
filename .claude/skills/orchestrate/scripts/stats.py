@@ -57,7 +57,7 @@ Fields:
               FAILED when your own verification rejected the result, or
               INTERRUPTED when it was stopped before it reported
     tokens, seconds   from the Agent result's usage; null if not shown. Never estimate.
-              If a continuation reports the agent's running total, record the difference
+              A SendMessage continuation's tokens are unreliable: record null
     defects   review entries only: the count at each severity (low includes
               the reviewer's LOW NOT LISTED)
   strained    where the protocol got in the way, cost more than it should have, or
@@ -201,6 +201,8 @@ def report(files):
 
         kinds = Counter(x["kind"] for x in calls)
         print("\nBy kind: " + ", ".join(f"{k} {kinds[k]}" for k in KINDS if kinds[k]))
+        rework = kinds["fix"] + kinds["retry"] + kinds["review"]
+        print(f"Reviews, fixes and retries: {rework} of {len(calls)} calls ({rework / len(calls):.0%})")
         first = Counter(x["status"] for x in calls if x["kind"] == "step")
         if first:
             print(f"First attempts at a step: {sum(first.values())} "
