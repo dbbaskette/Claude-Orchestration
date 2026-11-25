@@ -39,26 +39,27 @@ It prints each tier's model and effort, the `routing` limits named below, and wh
 
 ## 1. Triage
 
-- **Task is just `stats`:** run `python3 ${CLAUDE_SKILL_DIR}/scripts/stats.py`, relay the summary, and stop.
+- **Task is just `stats`:** run `python3 ${CLAUDE_SKILL_DIR}/scripts/stats.py`, relay the summary, and stop. `stats` in front of a task means record this run even if the config has stats off.
 - **Question, review or explanation:** answer it yourself; workers do any bulk reading.
 - **Small job** (one file or one tightly coupled change, steps already clear): send one brief to the right tier, with no ledger or REPORT FILE, then verify. A few-line edit to a file you have already read: do it yourself.
 - **Otherwise:** plan.
 
 **Budget:** a dispatch is each Agent call or SendMessage continuation; parallel reads in one message count as one. The limit is `routing.dispatch_budget`.
 
-- **Estimate when you plan:** one per step, one per review, one fix round per reviewed step, one for the final verification. Over the limit: give the user the number and ask before the first dispatch whether to raise the limit for this run or split the task.
+- **Estimate when you plan:** the mapping reads already sent, one per step, one per review Step 4 will require (the sensitive and large steps are known now), one fix round per reviewed step, one for the final verification. Over the limit: give the user the number and ask, before the first step, whether to raise the limit for this run or split the task.
 - **Keep the last dispatch** for Step 5's verification.
 - **At the limit, stop:** merge the remaining steps, or tell the user where things stand and ask. Re-planning doesn't reset the count.
+- **Never drop a required review to fit.** Ask to raise the limit; if the answer is no, log the step in OPEN FINDINGS as unreviewed. Budget left at wrap-up goes to those reviews.
 
 ## 2. Plan
 
-Change no project files while planning, and keep your context lean. Workers locate files, summarize modules and read logs, returning conclusions with `file:line`. Read a file yourself only when its detail drives a design decision. Ask the user about real ambiguity before any edit; a question only the user can answer never goes to a subagent. Make conventional choices yourself and state them. A choice that changes existing behavior (drops or rejects input, changes a default, breaks a caller) is not conventional: ask, or keep the existing behavior.
+Change no project files while planning, and keep your context lean. Workers locate files, summarize modules and read logs, returning conclusions with `file:line`. Read a file yourself only when its detail drives a design decision. When the task rests on a claim about the code (an issue says something is unused, removable or already shared), have a worker check the claim before you plan around it. Ask the user about real ambiguity before any edit; a question only the user can answer never goes to a subagent. Make conventional choices yourself and state them. A choice that changes existing behavior (drops or rejects input, changes a default, breaks a caller) is not conventional: ask, or keep the existing behavior.
 
 Each step of the plan has:
 
 - **What:** one outcome, stated as behavior and acceptance, not line-level instructions.
 - **Tier** and **files** it may touch.
-- **Done when:** a check that proves it, against the real thing (binary, endpoint, real suite) in preference to mocks.
+- **Done when:** a check that proves it, against the real thing (binary, endpoint, real suite) in preference to mocks. Include the checks every change in the repo must pass (root tests, lint, type check), not only the step's own suite.
 - **Depends on** and whether it **needs review** (Step 4).
 
 Split by knowledge, not count: steps needing the same understanding of the same code go to one executor. List the **re-plan triggers**: what would prove the plan wrong (an interface differs from what you assumed, a dependency is missing, a test can't pass without changing scope).
@@ -77,7 +78,7 @@ STEP LOG, one line per dispatch (step, kind, tier, model, effort, BASE, status, 
 OPEN FINDINGS (with why each is parked) | STRAINED | DISPATCHES n/budget, estimate e
 ```
 
-Take tokens and seconds from the Agent result's usage, and leave them blank if it shows none. Under STRAINED, note as it happens where the protocol got in the way or cost more than it should, and any rule you bent. Update the ledger as you go. Re-read it when results arrive and after compaction (the newest run folder is the current one), and trust it and `git` over memory. Never pull a subagent's transcript into your context to check progress.
+Take tokens and seconds from the Agent result's usage, and leave them blank if it shows none. If a continuation reports the agent's running total, log the difference. Under STRAINED, note as it happens where the protocol got in the way or cost more than it should, and any rule you bent. Update the ledger as you go. Re-read it when results arrive and after compaction (the newest run folder is the current one), and trust it and `git` over memory. Never pull a subagent's transcript into your context to check progress.
 
 ## 3. Dispatch
 
@@ -85,12 +86,12 @@ Take tokens and seconds from the Agent result's usage, and leave them blank if i
 - **Reads in parallel, everything else alone.** Send pure reads (search, read, summarize) together, at most `routing.max_parallel_readers` per message. A step that changes files or runs a build or tests runs with nothing else in flight in the same checkout, because they share build output and test state.
 - **Parallel writers** need all three; otherwise writers run one at a time:
   - the user asked for commits, branches or PRs in this task, since a worktree's work comes back only as commits. Earlier tasks don't count: if this one doesn't say, ask;
-  - the steps touch disjoint files and none depends on another's result;
+  - the steps touch disjoint files and none depends on another's result. A file several would add to (changelog, index, shared doc) goes to one step, or you edit it after the merge;
   - each runs with `isolation: worktree`, which starts from the default branch, not your working tree.
 
   Say in the plan which steps run in parallel and how they merge back. Each writer counts as its own dispatch.
-- **Worktree steps.** The executor can't write to your checkout, so give REPORT FILE as the run-folder path relative to its worktree (hidden there by the same exclude) and read it at the absolute path it returns. Its brief must say to commit on its branch. BASE is `git merge-base <default branch> <its branch>`; verify with `git diff <BASE> <its branch>`.
-- **Before each step that changes files,** record BASE (the output of `git stash create`, or `git rev-parse HEAD` if that prints nothing) and note the untracked files (`git status --short`). Without git history there is no BASE: verify by reading the files the report lists. Never commit unless the user asked for commits.
+- **Worktree steps.** The executor can't write to your checkout, so give REPORT FILE as the run-folder path relative to its worktree (hidden there by the same exclude) and read it at the absolute path it returns. Its brief must say to commit on its branch, with the attribution line to use if commits carry one. BASE is `git merge-base <default branch> <its branch>`; verify with `git diff <BASE> <its branch>`.
+- **Before each step that changes files,** finish any merge or branch switch it builds on and confirm it worked, in an earlier message than the dispatch. Then record BASE (the output of `git stash create`, or `git rev-parse HEAD` if that prints nothing) and note the untracked files (`git status --short`). Without git history there is no BASE: verify by reading the files the report lists. Never commit unless the user asked for commits.
 - **Reuse an executor:** send fix rounds and closely related follow-ups to the same executor with SendMessage.
 - **Run in the foreground** when the next step depends on the result, if the Agent tool allows it. This skill's planner model lasts only for the turn it was invoked in; later turns run on the session's model. For long jobs, run the whole session as the planner: `claude --agent orchestrator`.
 
@@ -118,16 +119,16 @@ A report is a claim, so verify every result, whatever its status. For a step tha
 
 1. `git diff --stat <BASE>` and `git status --short` must show nothing new outside SCOPE, or the step fails. Then read `git diff <BASE> -- <scope>`.
 2. Confirm DONE WHEN from the real output in the report; re-run it if in doubt.
-3. Send it to `orch-reviewer` if it touches security, auth, permissions, payments, or data migration or deletion; touches more than `routing.review_file_threshold` files; came back with concerns; or you can't tell from the diff that it is right. Give the reviewer the step's GOAL, INTERFACES, DECISIONS, SCOPE, NON-GOALS, CONSTRAINTS and DONE WHEN, plus BASE (and the branch, for a worktree step). Never give it the executor's report or tell it what not to flag.
-4. Each defect is fixed (sent verbatim to the same executor) or logged in OPEN FINDINGS with a reason. Re-review fixed high-severity defects against the same BASE.
+3. Send it to `orch-reviewer` if it touches security, auth, permissions, payments, or data migration or deletion; changes more than `routing.review_file_threshold` files; or you can't tell from the diff that it is right, or settle a concern it raised. A step that only moves or renames code needs no review: a worker confirms the moved code is unchanged. Give the reviewer the step's GOAL, INTERFACES, DECISIONS, SCOPE, NON-GOALS, CONSTRAINTS and DONE WHEN, plus BASE (and the branch, for a worktree step). Never give it the executor's report or tell it what not to flag.
+4. Each defect is fixed or logged in OPEN FINDINGS with a reason. One fix round per review, sent verbatim to the same executor: every high and medium defect, plus low ones in the same code. A review with only low defects gets no fix round: fix them yourself if it takes a few lines, else log them. Re-review fixed high-severity defects against the same BASE.
 
 | Status | Action |
 |---|---|
-| `DONE_WITH_CONCERNS` | Resolve correctness or scope concerns before accepting |
+| `DONE_WITH_CONCERNS` | The executor doubts its own result. Settle each concern from the diff or a check before accepting; NOTES need no action |
 | `NEEDS_CONTEXT` | Not a failure. Supply it and continue the same agent |
 | `BLOCKED` or failed check | Fix by cause (below) |
 
-Causes: **missing context**, same tier with a better brief. **Needs more reasoning**, up a tier, or one retry passing a higher `effort` on the call (`routing.worker_retry_effort`, `routing.executor_retry_effort`). **Too big**, split it. **Plan wrong**, re-plan.
+Causes: **trivial** (a ruling, or a few lines in a file you have read), settle it yourself and continue the same agent. **Missing context**, same tier with a better brief. **Needs more reasoning**, up a tier, or one retry passing a higher `effort` on the call (`routing.worker_retry_effort`, `routing.executor_retry_effort`). **Too big**, split it. **Plan wrong**, re-plan.
 
 - Every retry changes the brief, the tier or the effort, and carries what the failed attempt found. A failed step never moves to a cheaper tier.
 - A worker that wrote real code (new logic, a fix, a design choice) failed the step; the executor redoes or reviews it.
@@ -136,7 +137,7 @@ Causes: **missing context**, same tier with a better brief. **Needs more reasoni
 
 ## 5. Wrap up
 
-1. A worker runs the full verification (tests, build, lint); read the output.
+1. A worker runs the full verification (tests, build, lint), one suite at a time; read the output.
 2. Review the whole diff from the first BASE yourself for coherence and scope creep.
 3. If stats are on, record the run, also when it stops early. Print the form with `python3 ${CLAUDE_SKILL_DIR}/scripts/stats.py --template`, fill it from the ledger, write it to `<run folder>/stats.json`, then run `stats.py --check` on that file and fix what it reports.
 4. Tell the user what changed, which tier and model did each step (`/tasks` shows the models actually used), what was verified and how, the open findings, where the protocol strained, and anything undone or unverified.

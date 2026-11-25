@@ -16,7 +16,8 @@ from pathlib import Path
 OUTCOMES = ("done", "partial", "stopped")
 KINDS = ("read", "step", "fix", "retry", "review", "verify")
 TIERS = ("executor", "reviewer", "worker")
-STATUSES = ("DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED", "NO_DEFECTS", "DEFECTS", "FAILED")
+RETURNED = ("DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED", "NO_DEFECTS", "DEFECTS")
+STATUSES = RETURNED + ("FAILED", "INTERRUPTED")
 SEVERITIES = ("high", "medium", "low")
 
 TEMPLATE = {
@@ -28,6 +29,7 @@ TEMPLATE = {
     "used": 0,
     "replans": 0,
     "user_asks": 0,
+    "reviews_skipped": 0,
     "dispatches": [
         {"step": "1", "kind": "step", "tier": "executor", "model": "opus", "effort": "high",
          "status": "DONE", "tokens": None, "seconds": None},
@@ -42,16 +44,22 @@ GUIDE = f"""
 Fields:
   outcome     {' | '.join(OUTCOMES)} (stopped = ended before the work was finished)
   budget      routing.dispatch_budget, or the raised limit the user agreed to
-  estimate    your plan-time estimate of dispatches
+  estimate    your plan-time estimate of dispatches; null if you made none
   used        the ledger's DISPATCHES count
-  user_asks   questions you put to the user during the run
-  dispatches  one entry per Agent call or SendMessage continuation, in order
+  user_asks   questions you put to the user during the run; null if not recorded
+  reviews_skipped   steps that met a Step 4 review condition and got no review;
+              null if not recorded
+  dispatches  one entry per Agent call or SendMessage continuation, in order.
+              Parallel readers get an entry each, though they count once in used
     kind      {' | '.join(KINDS)}
     tier      {' | '.join(TIERS)}
-    status    as returned ({', '.join(STATUSES[:-1])}),
-              or FAILED when your own verification rejected the result
+    status    as returned ({', '.join(RETURNED)}),
+              FAILED when your own verification rejected the result, or
+              INTERRUPTED when it was stopped before it reported
     tokens, seconds   from the Agent result's usage; null if not shown. Never estimate.
-    defects   review entries only: the count at each severity
+              If a continuation reports the agent's running total, record the difference
+    defects   review entries only: the count at each severity (low includes
+              the reviewer's LOW NOT LISTED)
   strained    where the protocol got in the way, cost more than it should have, or
               you bent a rule, and why. [] if nothing did.
 Record what happened, not what should have.
@@ -69,9 +77,11 @@ def problems(d):
         if not isinstance(v, str) or not v.strip() or v.startswith("<"):
             out.append(f"{where}{key} must be filled-in text")
 
-    def count(obj, key, where=""):
+    def count(obj, key, where="", optional=False):
+        if optional and obj.get(key) is None:
+            return
         if type(obj.get(key)) is not int or obj[key] < 0:
-            out.append(f"{where}{key} must be a whole number of 0 or more")
+            out.append(f"{where}{key} must be a whole number of 0 or more" + (" or null" if optional else ""))
 
     def one_of(obj, key, allowed, where=""):
         if obj.get(key) not in allowed:
@@ -80,8 +90,10 @@ def problems(d):
     text(d, "run")
     text(d, "task")
     one_of(d, "outcome", OUTCOMES)
-    for key in ("budget", "estimate", "used", "replans", "user_asks"):
+    for key in ("budget", "used", "replans"):
         count(d, key)
+    for key in ("estimate", "user_asks", "reviews_skipped"):
+        count(d, key, optional=True)
 
     dispatches = d.get("dispatches")
     if not isinstance(dispatches, list):
@@ -160,12 +172,17 @@ def report(files):
         outcomes = Counter(d["outcome"] for _, d in runs)
         calls = [x for _, d in runs for x in d["dispatches"]]
         print(f"Runs: {n} ({', '.join(f'{o} {outcomes[o]}' for o in OUTCOMES)}) in {len(projects) or 1} project(s)")
-        used, est = sum(d["used"] for _, d in runs), sum(d["estimate"] for _, d in runs)
+        used = sum(d["used"] for _, d in runs)
+        est = [d for _, d in runs if d.get("estimate") is not None]
+        asks = [d["user_asks"] for _, d in runs if d.get("user_asks") is not None]
         at_limit = sum(d["used"] >= d["budget"] for _, d in runs)
-        over_est = sum(d["used"] > d["estimate"] for _, d in runs)
-        print(f"Dispatches: {used} used, {used / n:.1f} per run; estimated {est / n:.1f} per run")
-        print(f"  runs over their estimate: {over_est}; runs that reached the budget: {at_limit}")
-        print(f"Re-plans: {sum(d['replans'] for _, d in runs)}; questions to the user: {sum(d['user_asks'] for _, d in runs)}")
+        print(f"Dispatches: {used} used, {used / n:.1f} per run; runs that reached the budget: {at_limit}")
+        if est:
+            over = sum(d["used"] > d["estimate"] for d in est)
+            print(f"Estimates ({len(est)} of {n} runs): {avg(d['estimate'] for d in est):.1f} estimated against "
+                  f"{avg(d['used'] for d in est):.1f} used; over their estimate: {over}")
+        print(f"Re-plans: {sum(d['replans'] for _, d in runs)}; questions to the user: "
+              f"{sum(asks) if asks else '-'} ({len(asks)} of {n} runs recorded)")
 
         by_tier = defaultdict(list)
         for x in calls:
@@ -184,12 +201,19 @@ def report(files):
 
         kinds = Counter(x["kind"] for x in calls)
         print("\nBy kind: " + ", ".join(f"{k} {kinds[k]}" for k in KINDS if kinds[k]))
+        first = Counter(x["status"] for x in calls if x["kind"] == "step")
+        if first:
+            print(f"First attempts at a step: {sum(first.values())} "
+                  f"({', '.join(f'{s} {first[s]}' for s in STATUSES if first[s])})")
         reviews = [x for x in calls if x["kind"] == "review" and "defects" in x]
         if reviews:
             sev = {s: sum(x["defects"][s] for x in reviews) for s in SEVERITIES}
             total = sum(sev.values())
             print(f"Reviews: {len(reviews)}; defects {', '.join(f'{s} {sev[s]}' for s in SEVERITIES)} "
                   f"({total / len(reviews):.1f} per review)")
+        skipped_reviews = [d["reviews_skipped"] for _, d in runs if d.get("reviews_skipped") is not None]
+        if skipped_reviews:
+            print(f"Required reviews skipped: {sum(skipped_reviews)} ({len(skipped_reviews)} of {n} runs recorded)")
 
         notes = [(d["run"], s) for _, d in sorted(runs, key=lambda r: r[1]["run"], reverse=True)
                  for s in d["strained"]]
