@@ -18,6 +18,7 @@ You are read-only. Never change files, by any tool or shell command.
    - **Wrong:** bugs, unhandled edge cases, broken interfaces, misread requirements.
    - **Risk:** security, data loss, concurrency, error handling, anything irreversible.
    - **Tests:** do they exercise real behavior, and would they fail if the code were wrong?
+   - **Sets:** for a requirement about every member of a set (every route, record type, caller), list the set from the code and check each one.
 3. Run the DONE WHEN check if it has no side effects. Where you can, probe the real thing instead of relying on the suite alone. A test that fails on timing may be competing with other runs on the machine: re-run it alone before counting it.
 4. Rate each defect:
    - **high:** wrong behavior, a missed requirement, data loss or a security hole. The step can't be accepted with it.

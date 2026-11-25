@@ -46,7 +46,7 @@ It prints each tier's model and effort, the `routing` limits named below, and wh
 
 **Budget:** a dispatch is each Agent call or SendMessage continuation; parallel reads in one message count as one. The limit is `routing.dispatch_budget`.
 
-- **Estimate when you plan:** the mapping reads already sent, one per step, one per review Step 4 will require (the sensitive and large steps are known now), one fix round per reviewed step, one for the final verification. Over the limit: give the user the number and ask, before the first step, whether to raise the limit for this run or split the task.
+- **Estimate when you plan:** the mapping reads already sent, one per step, one per review Step 4 will require (the sensitive and large steps are known now), one fix round per reviewed step, one for the final verification, and a quarter on top for re-reviews and repeat fix rounds. Over the limit: give the user the number and ask, before the first step, whether to raise the limit for this run or split the task.
 - **Keep the last dispatch** for Step 5's verification.
 - **At the limit, stop:** merge the remaining steps, or tell the user where things stand and ask. Re-planning doesn't reset the count.
 - **Never drop a required review to fit.** Ask to raise the limit; if the answer is no, log the step in OPEN FINDINGS as unreviewed. Budget left at wrap-up goes to those reviews.
@@ -58,11 +58,11 @@ Change no project files while planning, and keep your context lean. Workers loca
 Each step of the plan has:
 
 - **What:** one outcome, stated as behavior and acceptance, not line-level instructions.
-- **Tier** and **files** it may touch.
-- **Done when:** a check that proves it, against the real thing (binary, endpoint, real suite) in preference to mocks. Include the checks every change in the repo must pass (root tests, lint, type check), not only the step's own suite.
+- **Tier** and **files** it may touch, including tests elsewhere that pin the behavior it changes.
+- **Done when:** a check that proves it, against the real thing (binary, endpoint, real suite) in preference to mocks. Include the checks every change in the repo must pass (root tests, lint, type check), not only the step's own suite. For a requirement about every member of a set (every route, record type, caller), the check walks the whole set.
 - **Depends on** and whether it **needs review** (Step 4).
 
-Split by knowledge, not count: steps needing the same understanding of the same code go to one executor. List the **re-plan triggers**: what would prove the plan wrong (an interface differs from what you assumed, a dependency is missing, a test can't pass without changing scope).
+Split by knowledge, not count: steps needing the same understanding of the same code go to one executor. When several steps make the same change in different places, do and review one first, then brief the rest with what its review found. List the **re-plan triggers**: what would prove the plan wrong (an interface differs from what you assumed, a dependency is missing, a test can't pass without changing scope).
 
 **Run folder.** Create `.claude/orchestrate/<YYYYMMDD-HHMM>-<task-slug>/` in the project. In a git repo, first hide it from `git status` (once per repo):
 
@@ -78,7 +78,7 @@ STEP LOG, one line per dispatch (step, kind, tier, model, effort, BASE, status, 
 OPEN FINDINGS (with why each is parked) | STRAINED | DISPATCHES n/budget, estimate e
 ```
 
-Take tokens and seconds from the Agent result's usage, and leave them blank if it shows none. If a continuation reports the agent's running total, log the difference. Under STRAINED, note as it happens where the protocol got in the way or cost more than it should, and any rule you bent. Update the ledger as you go. Re-read it when results arrive and after compaction (the newest run folder is the current one), and trust it and `git` over memory. Never pull a subagent's transcript into your context to check progress.
+Take tokens and seconds from the Agent result's usage, and leave them blank if it shows none. A SendMessage continuation's token count is unreliable: leave it blank and log only its seconds. Under STRAINED, note as it happens where the protocol got in the way or cost more than it should, and any rule you bent. Update the ledger as you go. Re-read it when results arrive and after compaction (the newest run folder is the current one), and trust it and `git` over memory. Never pull a subagent's transcript into your context to check progress.
 
 ## 3. Dispatch
 
@@ -90,7 +90,7 @@ Take tokens and seconds from the Agent result's usage, and leave them blank if i
   - each runs with `isolation: worktree`, which starts from the default branch, not your working tree.
 
   Say in the plan which steps run in parallel and how they merge back. Each writer counts as its own dispatch.
-- **Worktree steps.** The executor can't write to your checkout, so give REPORT FILE as the run-folder path relative to its worktree (hidden there by the same exclude) and read it at the absolute path it returns. Its brief must say to commit on its branch, with the attribution line to use if commits carry one. BASE is `git merge-base <default branch> <its branch>`; verify with `git diff <BASE> <its branch>`.
+- **Worktree steps.** The executor can't write to your checkout, so give REPORT FILE as the run-folder path relative to its worktree (hidden there by the same exclude) and read it at the absolute path it returns. Its brief must say to commit on its branch, with the attribution line to use if commits carry one. BASE is `git merge-base <default branch> <its branch>`; verify with `git diff <BASE> <its branch>`. A check that passed in a worktree says nothing about the merge: re-run it on the merged tip before another step builds on it.
 - **Before each step that changes files,** finish any merge or branch switch it builds on and confirm it worked, in an earlier message than the dispatch. Then record BASE (the output of `git stash create`, or `git rev-parse HEAD` if that prints nothing) and note the untracked files (`git status --short`). Without git history there is no BASE: verify by reading the files the report lists. Never commit unless the user asked for commits.
 - **Reuse an executor:** send fix rounds and closely related follow-ups to the same executor with SendMessage.
 - **Run in the foreground** when the next step depends on the result, if the Agent tool allows it. This skill's planner model lasts only for the turn it was invoked in; later turns run on the session's model. For long jobs, run the whole session as the planner: `claude --agent orchestrator`.
@@ -120,7 +120,7 @@ A report is a claim, so verify every result, whatever its status. For a step tha
 1. `git diff --stat <BASE>` and `git status --short` must show nothing new outside SCOPE, or the step fails. Then read `git diff <BASE> -- <scope>`.
 2. Confirm DONE WHEN from the real output in the report; re-run it if in doubt.
 3. Send it to `orch-reviewer` if it touches security, auth, permissions, payments, or data migration or deletion; changes more than `routing.review_file_threshold` files; or you can't tell from the diff that it is right, or settle a concern it raised. A step that only moves or renames code needs no review: a worker confirms the moved code is unchanged. Give the reviewer the step's GOAL, INTERFACES, DECISIONS, SCOPE, NON-GOALS, CONSTRAINTS and DONE WHEN, plus BASE (and the branch, for a worktree step). Never give it the executor's report or tell it what not to flag.
-4. Each defect is fixed or logged in OPEN FINDINGS with a reason. One fix round per review, sent verbatim to the same executor: every high and medium defect, plus low ones in the same code. A review with only low defects gets no fix round: fix them yourself if it takes a few lines, else log them. Re-review fixed high-severity defects against the same BASE.
+4. Each defect is fixed, carried into the brief of a later step that reworks that code, or logged in OPEN FINDINGS with a reason. One fix round per review, sent verbatim to the same executor: every high and medium defect, plus low ones in the same code. A review with only low defects gets no fix round: fix them yourself if it takes a few lines, else log them. A ruling you add to a fix round is a plan decision: one that changes existing behavior goes to the user first (Step 2). Re-review fixed high-severity defects against the same BASE.
 
 | Status | Action |
 |---|---|
@@ -132,7 +132,7 @@ Causes: **trivial** (a ruling, or a few lines in a file you have read), settle i
 
 - Every retry changes the brief, the tier or the effort, and carries what the failed attempt found. A failed step never moves to a cheaper tier.
 - A worker that wrote real code (new logic, a fix, a design choice) failed the step; the executor redoes or reviews it.
-- A step that fails its check or returns `BLOCKED` `routing.verification_failures_before_replan` times means the plan is wrong: re-plan.
+- A step that fails its check or returns `BLOCKED` `routing.verification_failures_before_replan` times means the plan is wrong: re-plan. A re-review that finds new high defects counts as a failed check.
 - A user message mid-task goes into the plan before the next dispatch.
 
 ## 5. Wrap up
