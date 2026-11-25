@@ -39,13 +39,13 @@ Add `--check` to report drift without writing; `/orchestrate` runs that check it
 |---|---|---|
 | `max_parallel_readers` | 4 | Read-only agents sent in one wave |
 | `dispatch_budget` | 12 | Dispatches per task. The planner estimates the run up front and asks before starting if it won't fit |
-| `review_file_threshold` | 20 | Changes touching more files than this always get reviewed |
+| `review_file_threshold` | 20 | Changes to more files than this always get reviewed. Pure moves and renames are compared instead |
 | `verification_failures_before_replan` | 2 | Failed checks on one step before re-planning |
 | `worker_retry_effort`, `executor_retry_effort` | high, xhigh | Effort for a retried step |
 
 ## Stats
 
-With `"stats": { "enabled": true }` in the config (the default), the planner ends each planned run by writing `stats.json` into the run folder: every dispatch with its tier, model, status, tokens and time, the estimate against the budget, review defects, re-plans, and a `strained` list of where the protocol got in the way or a rule was bent. Small jobs that skip planning aren't recorded. The file stays on your machine.
+With `"stats": { "enabled": true }` in the config (the default), the planner ends each planned run by writing `stats.json` into the run folder: every dispatch with its tier, model, status, tokens and time, the estimate against the budget, review defects, required reviews it skipped, re-plans, and a `strained` list of where the protocol got in the way or a rule was bent. Small jobs that skip planning aren't recorded. The file stays on your machine.
 
 Summarize the runs of one or more projects (default: the current one):
 
@@ -53,7 +53,7 @@ Summarize the runs of one or more projects (default: the current one):
 python3 .claude/skills/orchestrate/scripts/stats.py ~/Projects/app-one ~/Projects/app-two
 ```
 
-Or type `/orchestrate stats` in a project. The numbers are the planner's own record of each run, so treat them as a guide and not as billing data.
+Or type `/orchestrate stats` in a project. `/orchestrate stats <task>` records that run even with stats off. The numbers are the planner's own record of each run, so treat them as a guide and not as billing data.
 
 ## Install globally
 
@@ -68,9 +68,9 @@ The files work as-is in this project. To use them everywhere, symlink them into 
 The full protocol is [SKILL.md](.claude/skills/orchestrate/SKILL.md). In short:
 
 1. **Triage.** Questions are answered directly, and small jobs get one brief. Only larger work is planned, under a dispatch budget.
-2. **Plan, read-only.** Workers do the reading. Each step gets a tier, a file scope, a check, and conditions that trigger re-planning. Choices that change existing behavior go to you, not into the plan.
+2. **Plan, read-only.** Workers do the reading and check any claim about the code the task rests on. Each step gets a tier, a file scope, a check that includes the repo-wide tests, and conditions that trigger re-planning. Choices that change existing behavior go to you, not into the plan.
 3. **Dispatch.** The model is pinned on every call. Briefs give paths, interfaces, decisions and non-goals, not pasted files. Reads run in parallel and code changes one at a time. Code changes run in parallel only in separate worktrees, on disjoint files, when the task already calls for commits or PRs.
-4. **Verify.** The planner reads the real diff from a recorded starting commit. Risky or large changes go to the reviewer, which never sees the executor's report. Failures are fixed by cause: more context, a stronger tier, a smaller step, or a new plan.
+4. **Verify.** The planner reads the real diff from a recorded starting commit. Risky or large changes go to the reviewer, which never sees the executor's report; a required review is never dropped to fit the budget. High and medium defects get one fix round per review, and low ones are fixed in passing or parked. Failures are fixed by cause: more context, a stronger tier, a smaller step, or a new plan.
 5. **Wrap up.** Full test run, whole-diff review, the run's stats, and a report of what each tier did.
 
 Each planned run keeps a ledger, the subagents' full reports and its stats in `.claude/orchestrate/<date>-<task>/` in the project it runs in. In a git repo the planner hides that folder from `git status` by adding it to `.git/info/exclude`, which is local and never committed. The folder is safe to delete.
